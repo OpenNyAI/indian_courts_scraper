@@ -232,14 +232,22 @@ class SupremeCourtSearch:
         search_results_metadata.apply(
             lambda x: read_one_pdf_file_convert_to_txt_and_write(self.converter, x['pdf_filepath'], self.txt_output_folder_path),axis=1)
 
+    def search(self):
+        if self.search_type=='free_text':
+            df = self.search_free_text(self.search_duration)
 
+        elif self.search_type == 'actwise':
+            df = self.search_free_text(self.search_duration)
+        else:
+            df = pd.DataFrame()
+
+        return df
 if __name__ == '__main__':
-    # s = SupremeCourtSearch(search_type = 'actwise',search_kw='indian penal code')
-    s = SupremeCourtSearch(search_type='free_text', search_kw='child labour',
+    output_folder_path = '/Users/prathamesh/tw_projects/OpenNyAI/data/court_search/personal_liberty'
+    s = SupremeCourtSearch(search_type='free_text', search_kw='personal liberty',
                            search_duration=[datetime.date(1950, 1, 1), datetime.date(2022, 12, 31)],
-                           output_folder_path='/Users/prathamesh/tw_projects/OpenNyAI/data/court_search/')
-    # df = s.search()
-    # df.to_csv('/Users/prathamesh/tw_projects/OpenNyAI/data/court_search/sc_free_text.csv')
-    df = pd.read_csv('/Users/prathamesh/tw_projects/OpenNyAI/data/court_search/sc_free_text.csv')
+                           output_folder_path=output_folder_path)
+    df = s.search()
+    df.to_csv(os.path.join(output_folder_path,'search_results_judgment_metadata.csv'))
     df = s.download_judgment_pdfs(df)
     s.convert_downloaded_pdfs_to_text(df)
