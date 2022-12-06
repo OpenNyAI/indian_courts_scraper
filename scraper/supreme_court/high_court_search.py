@@ -78,25 +78,31 @@ class HighCourtSearch:
         captcha_text = re.sub(r'[^0-9]', '', captcha_text)
         return captcha_text
 
+    def refresh_captha(self,driver):
+        driver.find_element('xpath', '/html/body/div[2]/main/form/div[3]/div[1]/a/img').click()  ## refresh captcha
+
     def go_to_advanced_search(self,driver):
         captha_retry_cnt = 5
         captcha_text = self.get_captha_text(driver)
+        while len(captcha_text)!= 6:
+            self.refresh_captha(driver)
         driver.find_element("id", "captcha").send_keys(captcha_text)
         driver.find_element("link text", 'Advanced Search').click()
         success = False
         while captha_retry_cnt>0:
-            if driver.find_element('id', "errorIcon").is_displayed():
-                time.sleep(2)
-                driver.find_element(By.CLASS_NAME, "btn-close").click()
-                time.sleep(2)
-                driver.find_element('xpath', '/html/body/div[2]/main/form/div[3]/div[1]/a/img').click() ## refresh captcha
-                time.sleep(1)
-                captcha_text = self.get_captha_text(driver)
-                driver.find_element("id", "captcha").clear()
-                driver.find_element("id", "captcha").send_keys(captcha_text)
-                driver.find_element("link text", 'Advanced Search').click()
-                captha_retry_cnt -=1
-            else:
+            try:
+                if driver.find_element('id', "errorIcon").is_displayed():
+                    time.sleep(2)
+                    driver.find_element(By.CLASS_NAME, "btn-close").click()
+                    time.sleep(2)
+                    self.refresh_captha(driver)
+                    time.sleep(1)
+                    captcha_text = self.get_captha_text(driver)
+                    driver.find_element("id", "captcha").clear()
+                    driver.find_element("id", "captcha").send_keys(captcha_text)
+                    driver.find_element("link text", 'Advanced Search').click()
+                    captha_retry_cnt -=1
+            except:
                 success = True
         return success
 
