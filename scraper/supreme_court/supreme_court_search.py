@@ -106,7 +106,7 @@ class SupremeCourtSearch:
         df_metadata = pd.concat([df_reshaped, df_urls], axis=1)
         driver.close()
         df_metadata.drop_duplicates(subset=['Case Number'], inplace=True)
-        df_metadata['judgment_id'] = pd.util.hash_pandas_object(df_metadata[['Case Number']])
+        df_metadata['judgment_id'] = df_metadata['judgment_url'].apply(lambda x: hashlib.sha256(x.encode('utf-8')).hexdigest())
         return df_metadata
 
     def search_free_text(self) -> pd.DataFrame:
@@ -175,7 +175,7 @@ class SupremeCourtSearch:
         result_details_df = pd.DataFrame.from_records(result_details)
         driver.close()
         result_details_df.drop_duplicates(subset=['judgment_date', 'petitioner_name', 'respondent_name'], inplace=True)
-        result_details_df['judgment_id'] = pd.util.hash_pandas_object(result_details_df[['judgment_date', 'petitioner_name','respondent_name']])
+        result_details_df['judgment_id'] = result_details_df['judgment_url'].apply(lambda x: hashlib.sha256(x.encode('utf-8')).hexdigest())
         return result_details_df
 
     def create_pdf_filepath_from_url(self, judgment_url: str, court='SC') -> str:
@@ -225,8 +225,7 @@ class SupremeCourtSearch:
         """
         os.makedirs(self.output_folder_path + '/pdfs', exist_ok=True)
         time.sleep(0.01)
-        search_results_metadata['pdf_filepath'] = search_results_metadata['judgment_url'].apply(
-            self.create_pdf_filepath_from_url)
+        search_results_metadata['pdf_filepath'] = search_results_metadata['judgment_id'].apply(lambda x: os.path.join(self.pdf_output_folder_path , x +'.pdf'))
         judgment_urls = list(search_results_metadata[['judgment_url', 'pdf_filepath']].to_records(index=False))
         Parallel(n_jobs=-1)(
             delayed(self.download)(judgment_url, pdf_filepath) for judgment_url, pdf_filepath in tqdm(judgment_urls))
@@ -240,7 +239,7 @@ class SupremeCourtSearch:
 
     def search(self):
         if self.search_type=='free_text':
-            df = self.search_free_text(self.search_date_range)
+            df = self.search_free_text()
 
         elif self.search_type == 'actwise':
             df = self.search_actwise()
@@ -251,14 +250,14 @@ class SupremeCourtSearch:
 
         return df
 if __name__ == '__main__':
-    output_folder_path = '/Users/prathamesh/tw_projects/OpenNyAI/data/court_search/ipc'
-    # s = SupremeCourtSearch(search_type='free_text', search_kw='personal liberty',
-    #                        search_date_range=[datetime.date(2001, 1, 1), datetime.date(2022, 12, 31)],
-    #                        output_folder_path=output_folder_path)
-
-    s = SupremeCourtSearch(search_type='actwise', search_kw='indian penal code',
-                           search_date_range=[datetime.date(2022, 1, 1), datetime.date(2022, 12, 31)],
+    output_folder_path = '/Users/prathamesh/tw_projects/OpenNyAI/data/court_search/personal_liberty'
+    s = SupremeCourtSearch(search_type='free_text', search_kw='personal liberty',
+                           search_date_range=[datetime.date(2001, 1, 1), datetime.date(2022, 12, 31)],
                            output_folder_path=output_folder_path)
+
+    # s = SupremeCourtSearch(search_type='actwise', search_kw='indian penal code',
+    #                        search_date_range=[datetime.date(2022, 1, 1), datetime.date(2022, 12, 31)],
+    #                        output_folder_path=output_folder_path)
     df = s.search()
     df.to_csv(os.path.join(output_folder_path,'search_results_judgment_metadata.csv'))
     df = s.download_judgment_pdfs(df)
