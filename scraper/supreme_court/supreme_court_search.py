@@ -16,19 +16,19 @@ from joblib import Parallel, delayed
 from tqdm import tqdm
 import PyPDF2
 from haystack.nodes.file_converter.pdf import PDFToTextConverter
-
+import hashlib
 from pdf_to_text.pdf_to_text_converter import read_one_pdf_file_convert_to_txt_and_write
 
 
 class SupremeCourtSearch:
     def __init__(self, search_type: str, search_kw: str,
                  output_folder_path: str,
-                 search_duration=[datetime.date(2022, 1, 1), datetime.date(2022, 12, 31)]):
+                 search_date_range=(datetime.date(2022, 1, 1), datetime.date(2022, 12, 31))):
         self.sc_homepage = 'https://main.sci.gov.in/judgments'
         self.search_type = search_type  ##### 'actwise or free_text'
-        self.search_duration = search_duration
-        self.search_duration_one_year_intervals = self.create_one_year_time_ranges(search_duration[0],
-                                                                                   search_duration[1])
+        self.search_date_range = search_date_range
+        self.search_duration_one_year_intervals = self.create_one_year_time_ranges(search_date_range[0],
+                                                                                   search_date_range[1])
         self.search_kw = search_kw
 
         self.output_folder_path = output_folder_path
@@ -62,13 +62,13 @@ class SupremeCourtSearch:
                 search_results = pd.concat([search_results, judgment_details])
 
         elif self.search_type == 'free_text':
-            search_results = self.search_free_text(self.search_duration)
+            search_results = self.search_free_text(self.search_date_range)
         else:
             print('Invalid search type. Choose between actwise or free_text')
 
         return search_results
 
-    def search_actwise(self, search_duration: list[datetime.date]) -> pd.DataFrame:
+    def search_actwise(self) -> pd.DataFrame:
         driver = webdriver.Firefox()
         driver.get(self.sc_homepage)
         time.sleep(2)
@@ -80,10 +80,10 @@ class SupremeCourtSearch:
         driver.find_element("id", "Jact_name").send_keys(self.search_kw)
 
         driver.find_element("id", "JBDfrom_date").clear()
-        driver.find_element("id", "JBDfrom_date").send_keys(search_duration[0].strftime('%d-%m-%Y'))
+        driver.find_element("id", "JBDfrom_date").send_keys(self.search_date_range[0].strftime('%d-%m-%Y'))
 
         driver.find_element("id", "JBDto_date").clear()
-        driver.find_element("id", "JBDto_date").send_keys(search_duration[1].strftime('%d-%m-%Y'))
+        driver.find_element("id", "JBDto_date").send_keys(self.search_date_range[1].strftime('%d-%m-%Y'))
 
         driver.find_element("id", "v_getJAW").click()
         time.sleep(5)
@@ -104,9 +104,12 @@ class SupremeCourtSearch:
         df_reshaped = df.pivot(index='sr_no', columns='attribute', values='value')
         df_urls = df.groupby('sr_no')['judgment_url'].first()
         df_metadata = pd.concat([df_reshaped, df_urls], axis=1)
+        driver.close()
+        df_metadata.drop_duplicates(subset=['Case Number'], inplace=True)
+        df_metadata['judgment_id'] = pd.util.hash_pandas_object(df_metadata[['Case Number']])
         return df_metadata
 
-    def search_free_text(self, search_duration: list[datetime.date]) -> pd.DataFrame:
+    def search_free_text(self) -> pd.DataFrame:
         driver = webdriver.Firefox()
         driver.get(self.sc_homepage)
         time.sleep(1)
@@ -119,10 +122,10 @@ class SupremeCourtSearch:
         driver.find_element("id", "Free_Text").send_keys(self.search_kw)
 
         driver.find_element("id", "FT_from_date").clear()
-        driver.find_element("id", "FT_from_date").send_keys(search_duration[0].strftime('%d-%m-%Y'))
+        driver.find_element("id", "FT_from_date").send_keys(self.search_date_range[0].strftime('%d-%m-%Y'))
 
         driver.find_element("id", "FT_to_date").clear()
-        driver.find_element("id", "FT_to_date").send_keys(search_duration[1].strftime('%d-%m-%Y'))
+        driver.find_element("id", "FT_to_date").send_keys(self.search_date_range[1].strftime('%d-%m-%Y'))
 
         driver.find_element("id", "v_getTextFree").click()
         WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "get_free_text_data")))
@@ -170,6 +173,9 @@ class SupremeCourtSearch:
                 print('Could not fetch a judgment url')
 
         result_details_df = pd.DataFrame.from_records(result_details)
+        driver.close()
+        result_details_df.drop_duplicates(subset=['judgment_date', 'petitioner_name', 'respondent_name'], inplace=True)
+        result_details_df['judgment_id'] = pd.util.hash_pandas_object(result_details_df[['judgment_date', 'petitioner_name','respondent_name']])
         return result_details_df
 
     def create_pdf_filepath_from_url(self, judgment_url: str, court='SC') -> str:
@@ -234,18 +240,24 @@ class SupremeCourtSearch:
 
     def search(self):
         if self.search_type=='free_text':
-            df = self.search_free_text(self.search_duration)
+            df = self.search_free_text(self.search_date_range)
 
         elif self.search_type == 'actwise':
-            df = self.search_free_text(self.search_duration)
+            df = self.search_actwise()
         else:
             df = pd.DataFrame()
 
+
+
         return df
 if __name__ == '__main__':
-    output_folder_path = '/Users/prathamesh/tw_projects/OpenNyAI/data/court_search/personal_liberty'
-    s = SupremeCourtSearch(search_type='free_text', search_kw='personal liberty',
-                           search_duration=[datetime.date(1950, 1, 1), datetime.date(2022, 12, 31)],
+    output_folder_path = '/Users/prathamesh/tw_projects/OpenNyAI/data/court_search/ipc'
+    # s = SupremeCourtSearch(search_type='free_text', search_kw='personal liberty',
+    #                        search_date_range=[datetime.date(2001, 1, 1), datetime.date(2022, 12, 31)],
+    #                        output_folder_path=output_folder_path)
+
+    s = SupremeCourtSearch(search_type='actwise', search_kw='indian penal code',
+                           search_date_range=[datetime.date(2022, 1, 1), datetime.date(2022, 12, 31)],
                            output_folder_path=output_folder_path)
     df = s.search()
     df.to_csv(os.path.join(output_folder_path,'search_results_judgment_metadata.csv'))
