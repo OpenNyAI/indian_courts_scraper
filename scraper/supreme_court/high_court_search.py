@@ -86,6 +86,7 @@ class HighCourtSearch:
         captcha_text = self.get_captha_text(driver)
         while len(captcha_text)!= 6:
             self.refresh_captha(driver)
+            captcha_text = self.get_captha_text(driver)
         driver.find_element("id", "captcha").send_keys(captcha_text)
         driver.find_element("link text", 'Advanced Search').click()
         success = False
@@ -104,25 +105,33 @@ class HighCourtSearch:
                     captha_retry_cnt -=1
             except:
                 success = True
+                break
         return success
 
     def parse_page(self,driver):
+        WebDriverWait(driver, 20).until(EC.visibility_of_element_located((By.ID, "report_body")))
         result_elements = driver.find_element('id', 'report_body').find_elements('tag name', 'tr')
         result_details = []
         for result_element in result_elements:
             result_details_dict={}
             case_details_text = result_element.find_element(By.CLASS_NAME, 'caseDetailsTD').text
-            case_details_list = case_details_text.split(" | ")
-            for case_detail in case_details_list:
-                key,val = case_detail.split(' : ',maxsplit=1)
-                result_details_dict[key] = val
+            if case_details_text != '':
+                case_details_list = case_details_text.split(" | ")
+                for case_detail in case_details_list:
+                    key,val = case_detail.split(' : ',maxsplit=1)
+                    result_details_dict[key] = val
 
-            case_name = result_element.find_element(By.CSS_SELECTOR,"button[id^=link]")
-            result_details_dict['case_name'] = case_name.text
-            case_name.click()
-            judgment_url = driver.find_element('id', 'viewFiles-body').find_element('tag name', "object").get_attribute('data')
-            result_details_dict['judgment_url']=judgment_url
-            result_details.append(copy.deepcopy(result_details_dict))
+                case_name = result_element.find_element(By.CSS_SELECTOR,"button[id^=link]")
+                result_details_dict['case_name'] = case_name.text
+                case_name.click()
+                time.sleep(2)
+                WebDriverWait(driver, 20).until(EC.visibility_of_element_located((By.ID, "viewFiles-body")))
+                judgment_url = driver.find_element('id', 'viewFiles-body').find_element('tag name', "object").get_attribute('data')
+                result_details_dict['judgment_url']=judgment_url
+                result_details.append(copy.deepcopy(result_details_dict))
+                driver.find_element("id", 'modal_close').click()
+            else:
+                pass
         return result_details
 
     def search(self):
